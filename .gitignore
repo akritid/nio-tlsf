@@ -1,0 +1,46 @@
+# redundant source related
+*~ 
+~* 
+
+# backup files
+*.c~ 
+*.h~ 
+
+# object files
+*.o~ 
+*.o 
+
+# crash dumps
+*.core
+
+
+# all hidden filders/folders barring .gitignore
+.*
+!/.gitignore
+
+# autotools related
+
+# individual files
+Makefile
+Makefile.in
+config.*
+aclocal.m4
+stamp-h1
+
+# executables
+configure
+libtool
+config.status
+
+# folders
+build-aux/
+*.cache/
+m4/
+traces/
+
+# outputs
+*.lo
+*.la
+*.pc
+example
+tlsf_bench
