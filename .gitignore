@@ -1,0 +1,30 @@
+syntax: glob
+build
+configure
+Makefile.in
+autom4te.cache/
+build-aux
+aclocal.m4
+config.h.in
+m4
+*~
+DerivedData
+*.orig
+*.o
+*.lo
+.deps
+.libs
+*.sw*
+config.status
+config.log
+*.la
+
+# Ignore tag files for exuberant ctags(1) too.
+**/tags
+tags
+
+# Ignore cscope databases and indices:
+cscope.out*
+
+doxygen-doc/
+doxygen.log
