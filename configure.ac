@@ -18,9 +18,6 @@ AC_CONFIG_SRCDIR([tlsf.h])
 AC_CONFIG_HEADERS([config.h])
 AC_CONFIG_MACRO_DIR([m4])
 
-AX_GCC_BUILTIN(__builtin_ffs)
-AX_GCC_BUILTIN(__builtin_clzl)
-
 AC_PROG_CC_C99
 LT_INIT
 

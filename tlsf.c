@@ -34,7 +34,6 @@
 #error "unsupported architecture, only x86_64 supported"
 #endif
 
-#if HAVE___BUILTIN_FFS && HAVE___BUILTIN_CLZL
 static int tlsf_ffs(unsigned int word)
 {
 	return __builtin_ffs(word) - 1;
@@ -46,43 +45,6 @@ static int tlsf_fls_sizet(size_t word)
 	const int bit = word ? ulong_bits - __builtin_clzl((unsigned long)word) : 0;
 	return bit - 1;
 }
-#else
-/* Fall back to generic implementation */
-
-static int tlsf_fls(unsigned int word)
-{
-	int bit = 32;
-
-	if (!word) bit -= 1;
-	if (!(word & 0xffff0000)) { word <<= 16; bit -= 16; }
-	if (!(word & 0xff000000)) { word <<= 8; bit -= 8; }
-	if (!(word & 0xf0000000)) { word <<= 4; bit -= 4; }
-	if (!(word & 0xc0000000)) { word <<= 2; bit -= 2; }
-	if (!(word & 0x80000000)) { word <<= 1; bit -= 1; }
-
-	return bit - 1;
-}
-
-/* Implement ffs in terms of fls */
-static int tlsf_ffs(unsigned int word)
-{
-	return tlsf_fls(word & (~word + 1));
-}
-
-static int tlsf_fls_sizet(size_t size)
-{
-	int high = (int)(size >> 32);
-	int bits = 0;
-	if (high) {
-		bits = 32 + tlsf_fls(high);
-	} else {
-		bits = tlsf_fls((int)size & 0xffffffff);
-
-	}
-	return bits;
-}
-
-#endif
 
 /*
  * Constants.
