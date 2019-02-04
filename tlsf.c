@@ -198,15 +198,15 @@ struct tlsf {
 	block_header_t block_null;
 
 	/* Bitmaps for free lists */
-	unsigned int fl_bitmap;
-	unsigned int sl_bitmap[FL_INDEX_COUNT];
+	size_t fl_bitmap;
+	size_t sl_bitmap[FL_INDEX_COUNT];
 
 	/* Head of free lists */
 	block_header_t *blocks[FL_INDEX_COUNT][SL_INDEX_COUNT];
 };
 
 /* SL_INDEX_COUNT must be <= number of bits in sl_bitmap's storage type */
-tlsf_static_assert(sizeof(unsigned int) * CHAR_BIT >= SL_INDEX_COUNT);
+tlsf_static_assert(sizeof(size_t) * CHAR_BIT >= SL_INDEX_COUNT);
 
 /*
  * block_header_t member functions.
@@ -402,10 +402,10 @@ static block_header_t *search_suitable_block(tlsf_t *tlsf, int *fli, int *sli)
 	 * First, search for a block in the list associated with the given
 	 * fl/sl index.
 	 */
-	unsigned int sl_map = tlsf->sl_bitmap[fl] & (~0U << sl);
+	size_t sl_map = tlsf->sl_bitmap[fl] & (~0ULL << sl);
 	if (sl_map == 0) {
 		/* No block exists. Search in the next largest first-level list */
-		unsigned int fl_map = tlsf->fl_bitmap & (~0U << (fl + 1));
+		size_t fl_map = tlsf->fl_bitmap & (~0ULL << (fl + 1));
 		if (fl_map == 0) {
 			/* No free blocks available, memory has been exhausted */
 			return NULL;
@@ -455,11 +455,11 @@ static void remove_free_block(tlsf_t *tlsf, block_header_t *block, int fl, int s
 
 		/* If the new head is null, clear the bitmap */
 		if (next == &tlsf->block_null) {
-			tlsf->sl_bitmap[fl] &= ~(1U << sl);
+			tlsf->sl_bitmap[fl] &= ~(1ULL << sl);
 
 			/* If the second bitmap is now empty, clear the fl bitmap */
 			if (tlsf->sl_bitmap[fl] == 0) {
-				tlsf->fl_bitmap &= ~(1U << fl);
+				tlsf->fl_bitmap &= ~(1ULL << fl);
 			}
 		}
 	}
@@ -488,8 +488,8 @@ static void insert_free_block(tlsf_t *tlsf, block_header_t *block, int fl, int s
 	 * and second-level bitmaps appropriately.
 	 */
 	tlsf->blocks[fl][sl] = block;
-	tlsf->fl_bitmap |= (1U << fl);
-	tlsf->sl_bitmap[fl] |= (1U << sl);
+	tlsf->fl_bitmap |= (1ULL << fl);
+	tlsf->sl_bitmap[fl] |= (1ULL << sl);
 }
 
 /* Remove a given block from the free list */
@@ -747,9 +747,9 @@ int tlsf_check(tlsf_t *tlsf)
 	/* Check that the free lists and bitmaps are accurate */
 	for (i = 0; i < FL_INDEX_COUNT; i++) {
 		for (j = 0; j < SL_INDEX_COUNT; j++) {
-			const int fl_map = tlsf->fl_bitmap & (1 << i);
-			const int sl_list = tlsf->sl_bitmap[i];
-			const int sl_map = sl_list & (1 << j);
+			const size_t fl_map = tlsf->fl_bitmap & (1ULL << i);
+			const size_t sl_list = tlsf->sl_bitmap[i];
+			const size_t sl_map = sl_list & (1ULL << j);
 			const block_header_t *block = tlsf->blocks[i][j];
 
 			/* Check that first- and second-level lists agree */
