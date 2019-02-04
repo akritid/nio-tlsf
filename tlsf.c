@@ -872,6 +872,9 @@ size_t tlsf_block_size(void *ptr)
 		ASAN_UNPOISON_MEMORY_REGION(&block->metadata, sizeof(struct metadata));
 		size = block_size(block);
 		ASAN_POISON_MEMORY_REGION(&block->metadata, sizeof(struct metadata));
+		// needed because in realloc only the requested size is
+		// unpoisoned, after this call, the whole block size is exposed
+		ASAN_UNPOISON_MEMORY_REGION(ptr, size);
 	}
 	return size;
 }
