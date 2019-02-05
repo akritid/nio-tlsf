@@ -30,68 +30,21 @@
  * ffs/fls return 1-32 by default, returning 0 for error.
  */
 
-/*
- * Detect whether or not we are building for a 32- or 64-bit (LP/LLP)
- * architecture. There is no reliable portable method at compile-time.
- */
-#if defined (__alpha__) || defined (__ia64__) || defined (__x86_64__) \
-	|| defined (_WIN64) || defined (__LP64__) || defined (__LLP64__)
-#define TLSF_64BIT
+#if !defined (__x86_64__)
+#error "unsupported architecture, only x86_64 supported"
 #endif
 
-#if HAVE___BUILTIN_FFS && HAVE___BUILTIN_CLZL
-static int tlsf_ffs(unsigned int word)
+static int tlsf_ffsll(long long word)
 {
-	return __builtin_ffs(word) - 1;
+	return __builtin_ffsll(word) - 1;
 }
 
 static int tlsf_fls_sizet(size_t word)
 {
-	const int ulong_bits = 8 * sizeof(unsigned long);
-	const int bit = word ? ulong_bits - __builtin_clzl((unsigned long)word) : 0;
+	const int ull_bits = 8 * sizeof(unsigned long long);
+	const int bit = word ? ull_bits - __builtin_clzll((unsigned long long)word) : 0;
 	return bit - 1;
 }
-#else
-/* Fall back to generic implementation */
-
-static int tlsf_fls(unsigned int word)
-{
-	int bit = 32;
-
-	if (!word) bit -= 1;
-	if (!(word & 0xffff0000)) { word <<= 16; bit -= 16; }
-	if (!(word & 0xff000000)) { word <<= 8; bit -= 8; }
-	if (!(word & 0xf0000000)) { word <<= 4; bit -= 4; }
-	if (!(word & 0xc0000000)) { word <<= 2; bit -= 2; }
-	if (!(word & 0x80000000)) { word <<= 1; bit -= 1; }
-
-	return bit - 1;
-}
-
-/* Implement ffs in terms of fls */
-static int tlsf_ffs(unsigned int word)
-{
-	return tlsf_fls(word & (~word + 1));
-}
-
-#if defined (TLSF_64BIT)
-static int tlsf_fls_sizet(size_t size)
-{
-	int high = (int)(size >> 32);
-	int bits = 0;
-	if (high) {
-		bits = 32 + tlsf_fls(high);
-	} else {
-		bits = tlsf_fls((int)size & 0xffffffff);
-
-	}
-	return bits;
-}
-#else
-#define tlsf_fls_sizet tlsf_fls
-#endif
-
-#endif
 
 /*
  * Constants.
@@ -108,13 +61,8 @@ enum tlsf_public {
 
 /* Private constants: do not modify */
 enum tlsf_private {
-#if defined (TLSF_64BIT)
 	/* All allocation sizes and addresses are aligned to 8 bytes */
 	ALIGN_SIZE_LOG2 = 3,
-#else
-	/* All allocation sizes and addresses are aligned to 4 bytes */
-	ALIGN_SIZE_LOG2 = 2,
-#endif
 	ALIGN_SIZE = (1 << ALIGN_SIZE_LOG2),
 
 	/*
@@ -128,15 +76,11 @@ enum tlsf_private {
 	 * blocks below that size into the 0th first-level list.
 	 */
 
-#if defined (TLSF_64BIT)
 	/*
 	 * Increased this (from 32 to 40) to support larger sizes, at the expense
 	 * of more overhead in the TLSF structure.
 	 */
 	FL_INDEX_MAX = 40,
-#else
-	FL_INDEX_MAX = 30,
-#endif
 	SL_INDEX_COUNT = (1 << SL_INDEX_COUNT_LOG2),
 	FL_INDEX_SHIFT = (SL_INDEX_COUNT_LOG2 + ALIGN_SIZE_LOG2),
 	FL_INDEX_COUNT = (FL_INDEX_MAX - FL_INDEX_SHIFT + 1),
@@ -148,9 +92,9 @@ enum tlsf_private {
  * Cast and min/max macros.
  */
 
-#define tlsf_cast(t, exp)	((t) (exp))
-#define tlsf_min(a, b)		((a) < (b) ? (a) : (b))
-#define tlsf_max(a, b)		((a) > (b) ? (a) : (b))
+#define tlsf_cast(t, exp)       ((t)(exp))
+#define tlsf_min(a, b)          ((a) < (b) ? (a) : (b))
+#define tlsf_max(a, b)          ((a) > (b) ? (a) : (b))
 
 /*
  * Set assert macro, if it has not been provided by the user.
@@ -166,15 +110,12 @@ enum tlsf_private {
 #define _tlsf_glue2(x, y) x ## y
 #define _tlsf_glue(x, y) _tlsf_glue2(x, y)
 #define tlsf_static_assert(exp) \
-	typedef char _tlsf_glue(static_assert, __LINE__) [(exp) ? 1 : -1]
+	typedef char _tlsf_glue (static_assert, __LINE__) [(exp) ? 1 : -1]
 
 /* This code has been tested on 32- and 64-bit (LP/LLP) architectures */
 tlsf_static_assert(sizeof(int) * CHAR_BIT == 32);
 tlsf_static_assert(sizeof(size_t) * CHAR_BIT >= 32);
 tlsf_static_assert(sizeof(size_t) * CHAR_BIT <= 64);
-
-/* SL_INDEX_COUNT must be <= number of bits in sl_bitmap's storage type */
-tlsf_static_assert(sizeof(unsigned int) * CHAR_BIT >= SL_INDEX_COUNT);
 
 /* Ensure we've properly tuned our sizes */
 tlsf_static_assert(ALIGN_SIZE == SMALL_BLOCK_SIZE / SL_INDEX_COUNT);
@@ -202,8 +143,8 @@ typedef struct block_header {
 
 	struct metadata {
 		/* The size of this block, excluding the block header.
- 		 * The last two bits are used for flags.
- 		 */
+		 * The last two bits are used for flags.
+		 */
 		size_t size;
 
 		/* The heap this allocation belongs to */
@@ -257,12 +198,15 @@ struct tlsf {
 	block_header_t block_null;
 
 	/* Bitmaps for free lists */
-	unsigned int fl_bitmap;
-	unsigned int sl_bitmap[FL_INDEX_COUNT];
+	size_t fl_bitmap;
+	size_t sl_bitmap[FL_INDEX_COUNT];
 
 	/* Head of free lists */
 	block_header_t *blocks[FL_INDEX_COUNT][SL_INDEX_COUNT];
 };
+
+/* SL_INDEX_COUNT must be <= number of bits in sl_bitmap's storage type */
+tlsf_static_assert(sizeof(size_t) * CHAR_BIT >= SL_INDEX_COUNT);
 
 /*
  * block_header_t member functions.
@@ -458,21 +402,21 @@ static block_header_t *search_suitable_block(tlsf_t *tlsf, int *fli, int *sli)
 	 * First, search for a block in the list associated with the given
 	 * fl/sl index.
 	 */
-	unsigned int sl_map = tlsf->sl_bitmap[fl] & (~0U << sl);
+	size_t sl_map = tlsf->sl_bitmap[fl] & (~0ULL << sl);
 	if (sl_map == 0) {
 		/* No block exists. Search in the next largest first-level list */
-		unsigned int fl_map = tlsf->fl_bitmap & (~0U << (fl + 1));
+		size_t fl_map = tlsf->fl_bitmap & (~0ULL << (fl + 1));
 		if (fl_map == 0) {
 			/* No free blocks available, memory has been exhausted */
 			return NULL;
 		}
 
-		fl = tlsf_ffs(fl_map);
+		fl = tlsf_ffsll(fl_map);
 		*fli = fl;
 		sl_map = tlsf->sl_bitmap[fl];
 	}
 	tlsf_assert(sl_map && "internal error - second level bitmap is null");
-	sl = tlsf_ffs(sl_map);
+	sl = tlsf_ffsll(sl_map);
 	*sli = sl;
 
 	/* Return the first block in the free list */
@@ -511,11 +455,11 @@ static void remove_free_block(tlsf_t *tlsf, block_header_t *block, int fl, int s
 
 		/* If the new head is null, clear the bitmap */
 		if (next == &tlsf->block_null) {
-			tlsf->sl_bitmap[fl] &= ~(1U << sl);
+			tlsf->sl_bitmap[fl] &= ~(1ULL << sl);
 
 			/* If the second bitmap is now empty, clear the fl bitmap */
 			if (tlsf->sl_bitmap[fl] == 0) {
-				tlsf->fl_bitmap &= ~(1U << fl);
+				tlsf->fl_bitmap &= ~(1ULL << fl);
 			}
 		}
 	}
@@ -544,8 +488,8 @@ static void insert_free_block(tlsf_t *tlsf, block_header_t *block, int fl, int s
 	 * and second-level bitmaps appropriately.
 	 */
 	tlsf->blocks[fl][sl] = block;
-	tlsf->fl_bitmap |= (1U << fl);
-	tlsf->sl_bitmap[fl] |= (1U << sl);
+	tlsf->fl_bitmap |= (1ULL << fl);
+	tlsf->sl_bitmap[fl] |= (1ULL << sl);
 }
 
 /* Remove a given block from the free list */
@@ -803,9 +747,9 @@ int tlsf_check(tlsf_t *tlsf)
 	/* Check that the free lists and bitmaps are accurate */
 	for (i = 0; i < FL_INDEX_COUNT; i++) {
 		for (j = 0; j < SL_INDEX_COUNT; j++) {
-			const int fl_map = tlsf->fl_bitmap & (1 << i);
-			const int sl_list = tlsf->sl_bitmap[i];
-			const int sl_map = sl_list & (1 << j);
+			const size_t fl_map = tlsf->fl_bitmap & (1ULL << i);
+			const size_t sl_list = tlsf->sl_bitmap[i];
+			const size_t sl_map = sl_list & (1ULL << j);
 			const block_header_t *block = tlsf->blocks[i][j];
 
 			/* Check that first- and second-level lists agree */
@@ -1015,40 +959,31 @@ void tlsf_remove_pool(tlsf_t *tlsf, tlsf_pool_t *pool)
  * TLSF main interface.
  */
 
-#if _DEBUG
 int test_ffs_fls()
 {
 	/* Verify ffs/fls work properly */
 	int rv = 0;
-	rv += (tlsf_ffs(0) == -1) ? 0 : 0x1;
-	rv += (tlsf_fls(0) == -1) ? 0 : 0x2;
-	rv += (tlsf_ffs(1) == 0) ? 0 : 0x4;
-	rv += (tlsf_fls(1) == 0) ? 0 : 0x8;
-	rv += (tlsf_ffs(0x80000000) == 31) ? 0 : 0x10;
-	rv += (tlsf_ffs(0x80008000) == 15) ? 0 : 0x20;
-	rv += (tlsf_fls(0x80000008) == 31) ? 0 : 0x40;
-	rv += (tlsf_fls(0x7FFFFFFF) == 30) ? 0 : 0x80;
+	rv += (tlsf_ffsll(0) == -1) ? 0 : 0x1;
+	rv += (tlsf_ffsll(1) == 0) ? 0 : 0x4;
+	rv += (tlsf_ffsll(0x80000000) == 31) ? 0 : 0x10;
+	rv += (tlsf_ffsll(0x80008000) == 15) ? 0 : 0x20;
 
-#if defined (TLSF_64BIT)
 	rv += (tlsf_fls_sizet(0x80000000) == 31) ? 0 : 0x100;
 	rv += (tlsf_fls_sizet(0x100000000) == 32) ? 0 : 0x200;
 	rv += (tlsf_fls_sizet(0xffffffffffffffff) == 63) ? 0 : 0x400;
-#endif
 
 	if (rv) {
 		printf("test_ffs_fls: %x ffs/fls tests failed.\n", rv);
 	}
 	return rv;
 }
-#endif
 
 tlsf_t *tlsf_create(void *mem)
 {
-#if _DEBUG
 	if (test_ffs_fls()) {
+		printf("ffs/fls test failed\n");
 		return NULL;
 	}
-#endif
 
 	if (((ptrdiff_t)mem % ALIGN_SIZE) != 0) {
 		printf("tlsf_create: Memory must be aligned to %u bytes.\n",

@@ -11,6 +11,8 @@
 int
 main(int argc, char **argv)
 {
+	(void)argc;
+	(void)argv;
 	size_t memory_size = 1000000000;
 	char *memory = malloc(memory_size);
 	char ctrl[tlsf_size()];
