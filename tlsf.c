@@ -1167,6 +1167,9 @@ void *tlsf_realloc(tlsf_t *tlsf, void *ptr, size_t size)
 
 				// Unpoison extra
 				ASAN_UNPOISON_MEMORY_REGION(ptr + cursize, adjust - cursize);
+			} else if (adjust == cursize) {
+				// Unpoison whole area
+				ASAN_UNPOISON_MEMORY_REGION(ptr, cursize);
 			} else {
 				// Poison shrinked
 				ASAN_POISON_MEMORY_REGION(ptr + adjust, cursize - adjust);
